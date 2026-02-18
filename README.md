@@ -190,6 +190,10 @@ Configure S3 sync by setting these environment variables:
 | `S3_PROJECTS_URL` | S3 URL for projects | `s3://dataroot` or `s3://my-bucket/projects` |
 | `S3_PLUGINS_URL` | S3 URL for plugins | `s3://plugins` or `s3://my-bucket/plugins` |
 | `S3_MEDIA_URL` | S3 URL for media | `s3://media` or `s3://my-bucket/media` |
+| `S3_TEMPLATES_SOURCE_OF_TRUTH` | Source of truth for templates: `s3` or `spx` (default: `s3`) | `s3` |
+| `S3_PROJECTS_SOURCE_OF_TRUTH` | Source of truth for projects: `s3` or `spx` (default: `spx`) | `spx` |
+| `S3_PLUGINS_SOURCE_OF_TRUTH` | Source of truth for plugins: `s3` or `spx` (default: `s3`) | `s3` |
+| `S3_MEDIA_SOURCE_OF_TRUTH` | Source of truth for media: `s3` or `spx` (default: `s3`) | `s3` |
 
 Additionally, standard AWS credentials are required:
 - `AWS_ACCESS_KEY_ID`
@@ -216,12 +220,14 @@ Both approaches work. The separate buckets approach provides better isolation an
 
 #### Sync Behavior
 
-All syncs are bidirectional to ensure multi-instance consistency:
-- **Upload phase**: Local changes are uploaded to S3 (without `--delete` to prevent race conditions)
-- **Download phase**: S3 changes are downloaded locally (with `--delete` to mirror S3 as source of truth)
-- Sync runs automatically in the background at the configured interval
+Each resource type has a configurable **source of truth** that controls how deletions are handled:
 
-This ensures all instances eventually converge to the same state while preventing conflicts.
+- **`s3`** (default for templates, plugins, media): S3/MinIO is authoritative. Deleting a file in MinIO removes it from SPX. Deleting in SPX has no effect — it will be re-downloaded.
+- **`spx`** (default for projects): SPX is authoritative. Deleting a file in SPX removes it from S3. Deleting in S3 has no effect — it will be re-uploaded.
+
+Adding or editing files always works from both sides regardless of this setting.
+
+On startup, an initial download from S3 is performed for all configured types before sync loops begin. This prevents the first sync cycle from accidentally deleting S3 content that hasn't been downloaded yet.
 
 #### Example Docker Run
 
@@ -233,6 +239,7 @@ docker run -d -p 5656:5656 \
   -e S3_PLUGINS_URL=s3://plugins \
   -e S3_MEDIA_URL=s3://media \
   -e S3_SYNC_INTERVAL=60 \
+  -e S3_PROJECTS_SOURCE_OF_TRUTH=spx \
   -e AWS_ACCESS_KEY_ID=your-access-key \
   -e AWS_SECRET_ACCESS_KEY=your-secret-key \
   spx-gc-osc
