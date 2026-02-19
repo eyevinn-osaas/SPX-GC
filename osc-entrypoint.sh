@@ -107,21 +107,6 @@ if [ -n "$S3_MEDIA_URL" ]; then
   done
 fi
 
-# Persist a stable host ID across container restarts.
-# Without this, SPX derives its Host-ID from the container MAC address,
-# which changes on every suspend/resume and breaks license-based plugins.
-HOST_ID_FILE="/data/.spx-host-id"
-mkdir -p /data
-if [ -f "$HOST_ID_FILE" ]; then
-  export SPX_HOST_ID=$(cat "$HOST_ID_FILE")
-  echo "Loaded persistent SPX Host-ID: $SPX_HOST_ID"
-else
-  SPX_HOST_ID=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-8)
-  echo "$SPX_HOST_ID" > "$HOST_ID_FILE"
-  export SPX_HOST_ID
-  echo "Generated new persistent SPX Host-ID: $SPX_HOST_ID"
-fi
-
 # Start background S3 sync for templates if S3_TEMPLATES_URL is set
 if [ -n "$S3_TEMPLATES_URL" ]; then
   TEMPLATES_SYNC_TARGET="/app/ASSETS/templates"

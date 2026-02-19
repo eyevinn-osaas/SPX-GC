@@ -107,7 +107,7 @@ global.LastBrowsedTemplateFolder = '';
 
 macaddress.one(function (err, mc) {
   let macaddress = String(mc);
-  let pseudomac = process.env.SPX_HOST_ID || macaddress.split(':').join('').substring(0,8);
+  let pseudomac = macaddress.split(':').join('').substring(0,8);
   global.hwid = config.general.hostname || pseudomac;
   global.pmac = pseudomac; // an anonymous id
 });
