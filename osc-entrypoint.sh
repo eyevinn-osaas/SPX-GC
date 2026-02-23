@@ -50,14 +50,13 @@ fi
 
 SYNC_INTERVAL="${S3_SYNC_INTERVAL:-60}"
 
-# Control which side is the source of truth for deletions, per resource type.
-# "s3"  = S3/MinIO is the source of truth: only MinIO deletions propagate, SPX deletions are undone.
-# "spx" = SPX is the source of truth: only SPX deletions propagate, MinIO deletions are undone.
-# Adding/editing files always works from both sides regardless of this setting.
-PROJECTS_SOT="${S3_PROJECTS_SOURCE_OF_TRUTH:-spx}"
-TEMPLATES_SOT="${S3_TEMPLATES_SOURCE_OF_TRUTH:-s3}"
-PLUGINS_SOT="${S3_PLUGINS_SOURCE_OF_TRUTH:-s3}"
-MEDIA_SOT="${S3_MEDIA_SOURCE_OF_TRUTH:-s3}"
+# Source of truth per resource type (hardcoded):
+# "s3"  = S3/MinIO is authoritative for deletions (templates, plugins, media)
+# "spx" = SPX is authoritative for deletions (projects)
+PROJECTS_SOT="spx"
+TEMPLATES_SOT="s3"
+PLUGINS_SOT="s3"
+MEDIA_SOT="s3"
 
 # Helper: set UPLOAD_DELETE and DOWNLOAD_DELETE based on source of truth value
 set_sync_flags() {
