@@ -50,23 +50,77 @@ fi
 
 SYNC_INTERVAL="${S3_SYNC_INTERVAL:-60}"
 
+# Source of truth per resource type (hardcoded):
+# "s3"  = S3/MinIO is authoritative for deletions (templates, plugins, media)
+# "spx" = SPX is authoritative for deletions (projects)
+PROJECTS_SOT="spx"
+TEMPLATES_SOT="s3"
+PLUGINS_SOT="s3"
+MEDIA_SOT="s3"
+
+# Helper: set UPLOAD_DELETE and DOWNLOAD_DELETE based on source of truth value
+set_sync_flags() {
+  if [ "$1" = "spx" ]; then
+    UPLOAD_DELETE="--delete"
+    DOWNLOAD_DELETE=""
+  else
+    UPLOAD_DELETE=""
+    DOWNLOAD_DELETE="--delete"
+  fi
+}
+
+echo "Source of truth: projects=$PROJECTS_SOT, templates=$TEMPLATES_SOT, plugins=$PLUGINS_SOT, media=$MEDIA_SOT"
+
+# Initial S3 download for ALL types before anything else.
+# This ensures local directories are populated before sync loops start,
+# preventing the first upload cycle from wiping S3 content with --delete.
+if [ -n "$S3_PROJECTS_URL" ]; then
+  mkdir -p /data
+  echo "Performing initial S3 project download from $S3_PROJECTS_URL..."
+  aws s3 sync "$S3_PROJECTS_URL" /data $ENDPOINT_ARG 2>&1 | while read line; do
+    echo "[S3 Projects Initial Download] $line"
+  done
+fi
+
+if [ -n "$S3_TEMPLATES_URL" ]; then
+  mkdir -p /app/ASSETS/templates
+  echo "Performing initial S3 templates download from $S3_TEMPLATES_URL..."
+  aws s3 sync "$S3_TEMPLATES_URL" /app/ASSETS/templates $ENDPOINT_ARG 2>&1 | while read line; do
+    echo "[S3 Templates Initial Download] $line"
+  done
+fi
+
+if [ -n "$S3_PLUGINS_URL" ]; then
+  mkdir -p /app/ASSETS/plugins
+  echo "Performing initial S3 plugins download from $S3_PLUGINS_URL..."
+  aws s3 sync "$S3_PLUGINS_URL" /app/ASSETS/plugins $ENDPOINT_ARG 2>&1 | while read line; do
+    echo "[S3 Plugins Initial Download] $line"
+  done
+fi
+
+if [ -n "$S3_MEDIA_URL" ]; then
+  mkdir -p /app/ASSETS/media
+  echo "Performing initial S3 media download from $S3_MEDIA_URL..."
+  aws s3 sync "$S3_MEDIA_URL" /app/ASSETS/media $ENDPOINT_ARG 2>&1 | while read line; do
+    echo "[S3 Media Initial Download] $line"
+  done
+fi
+
 # Start background S3 sync for templates if S3_TEMPLATES_URL is set
 if [ -n "$S3_TEMPLATES_URL" ]; then
   TEMPLATES_SYNC_TARGET="/app/ASSETS/templates"
+  set_sync_flags "$TEMPLATES_SOT"
+  T_UPLOAD_DELETE="$UPLOAD_DELETE"
+  T_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
 
-  mkdir -p "$TEMPLATES_SYNC_TARGET"
+  echo "Starting bidirectional S3 template sync with $S3_TEMPLATES_URL (source of truth: $TEMPLATES_SOT, interval: ${SYNC_INTERVAL}s)"
 
-  echo "Starting bidirectional S3 template sync with $S3_TEMPLATES_URL (local: $TEMPLATES_SYNC_TARGET, interval: ${SYNC_INTERVAL}s)"
-
-  # Background sync loop (bidirectional)
   (
     while true; do
-      # Upload local changes to S3 (without --delete to avoid race conditions between instances)
-      aws s3 sync "$TEMPLATES_SYNC_TARGET" "$S3_TEMPLATES_URL" $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$TEMPLATES_SYNC_TARGET" "$S3_TEMPLATES_URL" $T_UPLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Templates Upload] $line"
       done
-      # Download from S3 (with --delete so all instances mirror S3)
-      aws s3 sync "$S3_TEMPLATES_URL" "$TEMPLATES_SYNC_TARGET" --delete $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$S3_TEMPLATES_URL" "$TEMPLATES_SYNC_TARGET" $T_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Templates Download] $line"
       done
       sleep "$SYNC_INTERVAL"
@@ -77,20 +131,18 @@ fi
 # Start background S3 sync for projects if S3_PROJECTS_URL is set
 if [ -n "$S3_PROJECTS_URL" ]; then
   PROJECTS_SYNC_TARGET="/data"
+  set_sync_flags "$PROJECTS_SOT"
+  P_UPLOAD_DELETE="$UPLOAD_DELETE"
+  P_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
 
-  mkdir -p "$PROJECTS_SYNC_TARGET"
+  echo "Starting bidirectional S3 project sync with $S3_PROJECTS_URL (source of truth: $PROJECTS_SOT, interval: ${SYNC_INTERVAL}s)"
 
-  echo "Starting bidirectional S3 project sync with $S3_PROJECTS_URL (local: $PROJECTS_SYNC_TARGET, interval: ${SYNC_INTERVAL}s)"
-
-  # Background sync loop (bidirectional)
   (
     while true; do
-      # Upload local changes to S3 (without --delete to avoid race conditions between instances)
-      aws s3 sync "$PROJECTS_SYNC_TARGET" "$S3_PROJECTS_URL" $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$PROJECTS_SYNC_TARGET" "$S3_PROJECTS_URL" $P_UPLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Projects Upload] $line"
       done
-      # Download from S3 (with --delete so all instances mirror S3)
-      aws s3 sync "$S3_PROJECTS_URL" "$PROJECTS_SYNC_TARGET" --delete $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$S3_PROJECTS_URL" "$PROJECTS_SYNC_TARGET" $P_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Projects Download] $line"
       done
       sleep "$SYNC_INTERVAL"
@@ -101,20 +153,18 @@ fi
 # Start background S3 sync for plugins if S3_PLUGINS_URL is set
 if [ -n "$S3_PLUGINS_URL" ]; then
   PLUGINS_SYNC_TARGET="/app/ASSETS/plugins"
+  set_sync_flags "$PLUGINS_SOT"
+  PL_UPLOAD_DELETE="$UPLOAD_DELETE"
+  PL_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
 
-  mkdir -p "$PLUGINS_SYNC_TARGET"
+  echo "Starting bidirectional S3 plugin sync with $S3_PLUGINS_URL (source of truth: $PLUGINS_SOT, interval: ${SYNC_INTERVAL}s)"
 
-  echo "Starting bidirectional S3 plugin sync with $S3_PLUGINS_URL (local: $PLUGINS_SYNC_TARGET, interval: ${SYNC_INTERVAL}s)"
-
-  # Background sync loop (bidirectional)
   (
     while true; do
-      # Upload local changes to S3 (without --delete to avoid race conditions between instances)
-      aws s3 sync "$PLUGINS_SYNC_TARGET" "$S3_PLUGINS_URL" $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$PLUGINS_SYNC_TARGET" "$S3_PLUGINS_URL" $PL_UPLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Plugins Upload] $line"
       done
-      # Download from S3 (with --delete so all instances mirror S3)
-      aws s3 sync "$S3_PLUGINS_URL" "$PLUGINS_SYNC_TARGET" --delete $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$S3_PLUGINS_URL" "$PLUGINS_SYNC_TARGET" $PL_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Plugins Download] $line"
       done
       sleep "$SYNC_INTERVAL"
@@ -125,20 +175,18 @@ fi
 # Start background S3 sync for media if S3_MEDIA_URL is set
 if [ -n "$S3_MEDIA_URL" ]; then
   MEDIA_SYNC_TARGET="/app/ASSETS/media"
+  set_sync_flags "$MEDIA_SOT"
+  M_UPLOAD_DELETE="$UPLOAD_DELETE"
+  M_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
 
-  mkdir -p "$MEDIA_SYNC_TARGET"
+  echo "Starting bidirectional S3 media sync with $S3_MEDIA_URL (source of truth: $MEDIA_SOT, interval: ${SYNC_INTERVAL}s)"
 
-  echo "Starting bidirectional S3 media sync with $S3_MEDIA_URL (local: $MEDIA_SYNC_TARGET, interval: ${SYNC_INTERVAL}s)"
-
-  # Background sync loop (bidirectional)
   (
     while true; do
-      # Upload local changes to S3 (without --delete to avoid race conditions between instances)
-      aws s3 sync "$MEDIA_SYNC_TARGET" "$S3_MEDIA_URL" $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$MEDIA_SYNC_TARGET" "$S3_MEDIA_URL" $M_UPLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Media Upload] $line"
       done
-      # Download from S3 (with --delete so all instances mirror S3)
-      aws s3 sync "$S3_MEDIA_URL" "$MEDIA_SYNC_TARGET" --delete $ENDPOINT_ARG 2>&1 | while read line; do
+      aws s3 sync "$S3_MEDIA_URL" "$MEDIA_SYNC_TARGET" $M_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Media Download] $line"
       done
       sleep "$SYNC_INTERVAL"

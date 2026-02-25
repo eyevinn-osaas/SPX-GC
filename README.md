@@ -216,12 +216,14 @@ Both approaches work. The separate buckets approach provides better isolation an
 
 #### Sync Behavior
 
-All syncs are bidirectional to ensure multi-instance consistency:
-- **Upload phase**: Local changes are uploaded to S3 (without `--delete` to prevent race conditions)
-- **Download phase**: S3 changes are downloaded locally (with `--delete` to mirror S3 as source of truth)
-- Sync runs automatically in the background at the configured interval
+Each resource type has a fixed **source of truth** that controls how deletions are handled:
 
-This ensures all instances eventually converge to the same state while preventing conflicts.
+- **`s3`** (default for templates, plugins, media): S3/MinIO is authoritative. Deleting a file in MinIO removes it from SPX. Deleting in SPX has no effect — it will be re-downloaded.
+- **`spx`** (default for projects): SPX is authoritative. Deleting a file in SPX removes it from S3. Deleting in S3 has no effect — it will be re-uploaded.
+
+Adding or editing files always works from both sides regardless of this setting.
+
+On startup, an initial download from S3 is performed for all configured types before sync loops begin. This prevents the first sync cycle from accidentally deleting S3 content that hasn't been downloaded yet.
 
 #### Example Docker Run
 
