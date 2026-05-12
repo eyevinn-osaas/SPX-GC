@@ -57,6 +57,7 @@ PROJECTS_SOT="spx"
 TEMPLATES_SOT="s3"
 PLUGINS_SOT="s3"
 MEDIA_SOT="s3"
+JSON_SOT="s3"
 
 # Helper: set UPLOAD_DELETE and DOWNLOAD_DELETE based on source of truth value
 set_sync_flags() {
@@ -69,7 +70,7 @@ set_sync_flags() {
   fi
 }
 
-echo "Source of truth: projects=$PROJECTS_SOT, templates=$TEMPLATES_SOT, plugins=$PLUGINS_SOT, media=$MEDIA_SOT"
+echo "Source of truth: projects=$PROJECTS_SOT, templates=$TEMPLATES_SOT, plugins=$PLUGINS_SOT, media=$MEDIA_SOT, json=$JSON_SOT"
 
 # Initial S3 download for ALL types before anything else.
 # This ensures local directories are populated before sync loops start,
@@ -103,6 +104,14 @@ if [ -n "$S3_MEDIA_URL" ]; then
   echo "Performing initial S3 media download from $S3_MEDIA_URL..."
   aws s3 sync "$S3_MEDIA_URL" /app/ASSETS/media $ENDPOINT_ARG 2>&1 | while read line; do
     echo "[S3 Media Initial Download] $line"
+  done
+fi
+
+if [ -n "$S3_JSON_URL" ]; then
+  mkdir -p /app/ASSETS/Json
+  echo "Performing initial S3 json download from $S3_JSON_URL..."
+  aws s3 sync "$S3_JSON_URL" /app/ASSETS/Json $ENDPOINT_ARG 2>&1 | while read line; do
+    echo "[S3 Json Initial Download] $line"
   done
 fi
 
@@ -188,6 +197,28 @@ if [ -n "$S3_MEDIA_URL" ]; then
       done
       aws s3 sync "$S3_MEDIA_URL" "$MEDIA_SYNC_TARGET" $M_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
         echo "[S3 Media Download] $line"
+      done
+      sleep "$SYNC_INTERVAL"
+    done
+  ) &
+fi
+
+# Start background S3 sync for json if S3_JSON_URL is set
+if [ -n "$S3_JSON_URL" ]; then
+  JSON_SYNC_TARGET="/app/ASSETS/Json"
+  set_sync_flags "$JSON_SOT"
+  J_UPLOAD_DELETE="$UPLOAD_DELETE"
+  J_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
+
+  echo "Starting bidirectional S3 json sync with $S3_JSON_URL (source of truth: $JSON_SOT, interval: ${SYNC_INTERVAL}s)"
+
+  (
+    while true; do
+      aws s3 sync "$JSON_SYNC_TARGET" "$S3_JSON_URL" $J_UPLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
+        echo "[S3 Json Upload] $line"
+      done
+      aws s3 sync "$S3_JSON_URL" "$JSON_SYNC_TARGET" $J_DOWNLOAD_DELETE $ENDPOINT_ARG 2>&1 | while read line; do
+        echo "[S3 Json Download] $line"
       done
       sleep "$SYNC_INTERVAL"
     done
