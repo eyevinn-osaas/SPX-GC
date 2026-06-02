@@ -108,9 +108,9 @@ if [ -n "$S3_MEDIA_URL" ]; then
 fi
 
 if [ -n "$S3_JSON_URL" ]; then
-  mkdir -p /app/ASSETS/Json
+  mkdir -p /app/ASSETS/json
   echo "Performing initial S3 json download from $S3_JSON_URL..."
-  aws s3 sync "$S3_JSON_URL" /app/ASSETS/Json $ENDPOINT_ARG 2>&1 | while read line; do
+  aws s3 sync "$S3_JSON_URL" /app/ASSETS/json $ENDPOINT_ARG 2>&1 | while read line; do
     echo "[S3 Json Initial Download] $line"
   done
 fi
@@ -205,7 +205,7 @@ fi
 
 # Start background S3 sync for json if S3_JSON_URL is set
 if [ -n "$S3_JSON_URL" ]; then
-  JSON_SYNC_TARGET="/app/ASSETS/Json"
+  JSON_SYNC_TARGET="/app/ASSETS/json"
   set_sync_flags "$JSON_SOT"
   J_UPLOAD_DELETE="$UPLOAD_DELETE"
   J_DOWNLOAD_DELETE="$DOWNLOAD_DELETE"
